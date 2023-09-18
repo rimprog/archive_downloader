@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import os
 
 import aiofiles
 from aiohttp import web
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 async def archive(request):
@@ -25,6 +28,7 @@ async def archive(request):
         while not archive_process.stdout.at_eof():
             archive_chunk = await archive_process.stdout.read(102400)
             await response.write(archive_chunk)
+            logging.debug(u'Sending archive chunk ...')
 
         return response
 
