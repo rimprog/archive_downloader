@@ -5,6 +5,8 @@ import os
 import aiofiles
 from aiohttp import web
 
+CHUNK_SIZE = 100 * 1024
+
 logging.basicConfig(level=logging.DEBUG)
 
 
@@ -13,30 +15,46 @@ async def archive(request):
     archive_name = 'photos.zip'
     archive_hash = request.match_info.get('archive_hash')
     files_path = f'{os.getcwd()}/{files_folder_name}/{archive_hash}/'
-    if os.path.exists(files_path):
-        response = web.StreamResponse()
-        response.headers['Content-Disposition'] = f'attachment; filename={archive_name}'
 
-        await response.prepare(request)
-
-        archive_process = await asyncio.create_subprocess_exec(
-            'zip', '-r', '-', f'./',
-            stdout=asyncio.subprocess.PIPE,
-            cwd=files_path,
-        )
-
-        while not archive_process.stdout.at_eof():
-            archive_chunk = await archive_process.stdout.read(102400)
-            await response.write(archive_chunk)
-            logging.debug(u'Sending archive chunk ...')
-
-        return response
-
-    else:
+    if not os.path.exists(files_path):
         return web.HTTPNotFound(
             text="<html><body>The archive does not exist or has been deleted.</body></html>",
             content_type="text/html"
         )
+
+    response = web.StreamResponse()
+    response.headers['Content-Disposition'] = f'attachment; filename={archive_name}'
+
+    await response.prepare(request)
+
+    archive_process = await asyncio.create_subprocess_exec(
+        'zip', '-r', '-', '.',
+        cwd=files_path,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        limit=CHUNK_SIZE,
+    )
+
+    try:
+        while not archive_process.stdout.at_eof():
+            archive_chunk = await archive_process.stdout.read(CHUNK_SIZE)
+            await response.write(archive_chunk)
+            logging.debug(u'Sending archive chunk ...')
+            await asyncio.sleep(3)
+
+    except asyncio.CancelledError:
+        archive_process.terminate()
+        logging.info(u'Download was interrupted')
+        raise
+
+    except BaseException as exception:
+        archive_process.terminate()
+        logging.exception(exception)
+        raise
+
+    finally:
+        await archive_process.communicate()
+        return response
 
 
 async def handle_index_page(request):
