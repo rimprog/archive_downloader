@@ -1,20 +1,41 @@
+import argparse
 import asyncio
 import logging
 import os
+import pathlib
 
 import aiofiles
 from aiohttp import web
+from pathvalidate import sanitize_filepath
 
 CHUNK_SIZE = 100 * 1024
 
-logging.basicConfig(level=logging.DEBUG)
+parser = argparse.ArgumentParser(
+    description='Microservice for archive downloading'
+)
+parser.add_argument('--logging', help='Turn on|off logging',
+                    action=argparse.BooleanOptionalAction, type=bool, default=True)
+parser.add_argument('--archive_delay', help='Turn on|off delay during archive process',
+                    action=argparse.BooleanOptionalAction, type=bool, default=False)
+parser.add_argument('--path_to_files_folder', help='Path to folder with files for archiving',
+                    default=f'{os.getcwd()}/test_photos/', type=pathlib.Path)
+args = parser.parse_args()
+
+if not args.path_to_files_folder.exists():
+    raise argparse.ArgumentTypeError(
+        f'Path to folder with files for archiving does not exist: {args.path_to_files_folder}'
+    )
+
+if args.logging:
+    logging.basicConfig(level=logging.DEBUG)
 
 
 async def archive(request):
-    files_folder_name = 'test_photos'
     archive_name = 'photos.zip'
     archive_hash = request.match_info.get('archive_hash')
-    files_path = f'{os.getcwd()}/{files_folder_name}/{archive_hash}/'
+    files_path = sanitize_filepath(
+        os.path.join(args.path_to_files_folder, archive_hash)
+    )
 
     if not os.path.exists(files_path):
         return web.HTTPNotFound(
@@ -40,7 +61,9 @@ async def archive(request):
             archive_chunk = await archive_process.stdout.read(CHUNK_SIZE)
             await response.write(archive_chunk)
             logging.debug(u'Sending archive chunk ...')
-            await asyncio.sleep(3)
+
+            if args.archive_delay:
+                await asyncio.sleep(3)
 
     except asyncio.CancelledError:
         archive_process.terminate()
