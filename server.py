@@ -14,7 +14,7 @@ CHUNK_SIZE = 100 * 1024
 async def archive(request):
     args = request.app['args']
     archive_name = 'photos.zip'
-    archive_hash = request.match_info.get('archive_hash')
+    archive_hash = request.match_info['archive_hash']
     files_path = sanitize_filepath(
         os.path.join(args.path_to_files_folder, archive_hash)
     )
