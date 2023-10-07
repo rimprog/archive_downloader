@@ -10,27 +10,9 @@ from pathvalidate import sanitize_filepath
 
 CHUNK_SIZE = 100 * 1024
 
-parser = argparse.ArgumentParser(
-    description='Microservice for archive downloading'
-)
-parser.add_argument('--logging', help='Turn on|off logging',
-                    action=argparse.BooleanOptionalAction, type=bool, default=True)
-parser.add_argument('--archive_delay', help='Turn on|off delay during archive process',
-                    action=argparse.BooleanOptionalAction, type=bool, default=False)
-parser.add_argument('--path_to_files_folder', help='Path to folder with files for archiving',
-                    default=f'{os.getcwd()}/test_photos/', type=pathlib.Path)
-args = parser.parse_args()
-
-if not args.path_to_files_folder.exists():
-    raise argparse.ArgumentTypeError(
-        f'Path to folder with files for archiving does not exist: {args.path_to_files_folder}'
-    )
-
-if args.logging:
-    logging.basicConfig(level=logging.DEBUG)
-
 
 async def archive(request):
+    args = request.app['args']
     archive_name = 'photos.zip'
     archive_hash = request.match_info.get('archive_hash')
     files_path = sanitize_filepath(
@@ -87,10 +69,34 @@ async def handle_index_page(request):
     return web.Response(text=index_contents, content_type='text/html')
 
 
-if __name__ == '__main__':
+def main():
+    parser = argparse.ArgumentParser(
+        description='Microservice for archive downloading'
+    )
+    parser.add_argument('--logging', help='Turn on|off logging',
+                        action=argparse.BooleanOptionalAction, type=bool, default=True)
+    parser.add_argument('--archive_delay', help='Turn on|off delay during archive process',
+                        action=argparse.BooleanOptionalAction, type=bool, default=False)
+    parser.add_argument('--path_to_files_folder', help='Path to folder with files for archiving',
+                        default=f'{os.getcwd()}/test_photos/', type=pathlib.Path)
+    args = parser.parse_args()
+
+    if not args.path_to_files_folder.exists():
+        raise argparse.ArgumentTypeError(
+            f'Path to folder with files for archiving does not exist: {args.path_to_files_folder}'
+        )
+
+    if args.logging:
+        logging.basicConfig(level=logging.DEBUG)
+
     app = web.Application()
     app.add_routes([
         web.get('/', handle_index_page),
         web.get('/archive/{archive_hash}/', archive),
     ])
+    app['args'] = args
     web.run_app(app)
+
+
+if __name__ == '__main__':
+    main()
